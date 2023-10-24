@@ -3,14 +3,17 @@
 #include <vector>
 #include <float.h>
 #include <algorithm>
-#include <boost/format.hpp>
-#include <boost/histogram.hpp>
+// #include <boost/format.hpp>
+// #include <boost/histogram.hpp>
 
 #define DAMPING_FACTOR 0.85
 #define EPSILON 0.0001
+#define WIKI_PATH "data/wiki.dimacs"
+#define ROAD_NY_PATH "data/road-NY.dimacs"
+#define RMAT15_PATH "data/rmat15.dimacs"
 
 using namespace std;
-using namespace boost::histogram;
+// using namespace boost::histogram;
 
 struct Graph {
     vector<double> labels;                   // List of node labels
@@ -18,9 +21,13 @@ struct Graph {
     vector<pair<int, int>> dest_weights;  // List of dest and weight pairs
 };
 
-Graph adjacencyToCSR (vector<vector<int>> adjacency, int numNodes, int numEdges);
+Graph COOtoCSR (vector<vector<int>> cooRep, int numNodes, int numEdges);
 Graph readGraphFromDIMACS(const string& filePath);
 double pushPageRankIteration(Graph& graph, double dampingFactor);
+
+bool sortByFrom(const vector<int>& a, const vector<int>& b) {
+    return a[0] < b[0];
+}
 
 // Function to read a graph in DIMACS format and construct CSR representation
 Graph readGraphFromDIMACS(const string& filePath) {
@@ -46,10 +53,10 @@ Graph readGraphFromDIMACS(const string& filePath) {
         }
     }
 
-    vector<vector<int>> adjacencyMatrix(numNodes + 1, 
-        vector<int>(numNodes + 1, 0));
+    vector<vector<int>> cooRep(numEdges, vector<int>(3, 0));
     
     // Add edges to adjacency matrix
+    int count = 0;
     while (getline(file, line)) {
         if (line.empty() || line[0] == 'c') {
             // Skip comments
@@ -62,33 +69,35 @@ Graph readGraphFromDIMACS(const string& filePath) {
             std::sscanf(line.c_str(), "a %d %d %d", &from, &to, &weight);
 
             // Store the destination node in the adjacency list
-            adjacencyMatrix[from][to] = weight;
+            cooRep[count++] = {from, to, weight};
         }
     }
 
-    Graph graph = adjacencyToCSR(adjacencyMatrix, numNodes, numEdges);
+    sort(cooRep.begin(), cooRep.end(), sortByFrom);
+    Graph graph = COOtoCSR(cooRep, numNodes, numEdges);
 
     file.close();
     return graph;
 }
 
-/* Function to convert adjacency matrix to CSR representation
-*/
-Graph adjacencyToCSR (vector<vector<int>> adjacency, int numNodes, int numEdges) {
+// Convert COO representation to CSR representation
+Graph COOtoCSR (vector<vector<int>> cooRep, int numNodes, int numEdges) {
     Graph graph;
     graph.offsets.push_back(0);
     graph.labels.push_back(0.0);
 
     double initPageRank = 1 / (double) numNodes;
 
-    // Iterate over the adjacency matrix and add the edges to the CSR representation
-    for (int i = 1; i < numNodes + 1; i++) {
+    // Iterate over the COO representation and add the edges to the CSR representation
+    int curIndex = 0;
+    for (int i = 1; i <= numNodes; i++) {
         graph.labels.push_back(initPageRank);
         graph.offsets.push_back(graph.dest_weights.size());
-        for (int j = 1; j < numNodes + 1; j++) {
-            if (adjacency[i][j] != 0) {
-                graph.dest_weights.push_back(make_pair(j, adjacency[i][j]));
+        for (; curIndex < numEdges; curIndex++) {
+            if (cooRep[curIndex][0] != i) {
+                break;
             }
+            graph.dest_weights.push_back(make_pair(cooRep[curIndex][1], cooRep[curIndex][2]));
         }
     }
     graph.offsets.push_back(graph.dest_weights.size());
@@ -106,7 +115,7 @@ void CSRtoDIMACS (Graph g, const string& filename) {
     int numVertices = g.offsets.size() - 2;
     int numEdges = g.dest_weights.size();
 
-    file << "p sp " << numVertices << " " << numEdges << std::endl;
+    file << "p sp " << numVertices << " " << numEdges << endl;
 
     for (int i = 1; i < numVertices + 1; i++) {
         for (int j = g.offsets[i]; j < g.offsets[i + 1]; j++) {
@@ -125,8 +134,10 @@ void printNodeNumbersAndLabels(const Graph& g, const string& filename) {
     }
 
     int numVertices = g.offsets.size() - 2;
+    double sum = 0.0;
 
     for (int i = 1; i < numVertices + 1; i++) {
+        sum += g.labels[i];
         file << i << " " << g.labels[i] << endl; // Node numbers start from 1
     }
 
@@ -137,6 +148,17 @@ void pageRank(Graph& graph, double dampingFactor, double epsilon) {
     double prevMaxDiff = DBL_MAX;
     while (prevMaxDiff > epsilon) {
         prevMaxDiff = pushPageRankIteration(graph, dampingFactor);
+    }
+
+    double totalRank = 0;
+    int numVertices = graph.offsets.size() - 2;
+
+    for (int i = 1; i < numVertices + 1; i++) {
+        totalRank += graph.labels[i];
+    }
+    // Normalize the PageRank scores
+    for (int i = 1; i < numVertices + 1; i++) {
+        graph.labels[i] = graph.labels[i] / totalRank;
     }
 }
 
@@ -149,19 +171,6 @@ double pushPageRankIteration(Graph& graph, double dampingFactor) {
         int outDegree = graph.offsets[i + 1] - graph.offsets[i];
 
         if (outDegree > 0) {
-            // double totalOutWeight = 0.0;
-            // for (int j = graph.offsets[i]; j < graph.offsets[i + 1]; j++) {
-            //     totalOutWeight += graph.dest_weights[j].second;
-            // }
-
-            // double pushWeight = graph.labels[i] / totalOutWeight;
-
-            // for (int j = graph.offsets[i]; j < graph.offsets[i + 1]; j++) {
-            //     int dest = graph.dest_weights[j].first;
-            //     int weight = graph.dest_weights[j].second;
-            //     newPageRank[dest] += pushWeight * weight;
-            // }
-
             double pushWeight = graph.labels[i] / outDegree;
 
             for (int j = graph.offsets[i]; j < graph.offsets[i + 1]; j++) {
@@ -174,17 +183,14 @@ double pushPageRankIteration(Graph& graph, double dampingFactor) {
 
     // Apply damping factor and update PageRank
     double teleportWeight = (1.0 - dampingFactor) / numVertices;
-    double totalRank = 0;
     double maxDiff = -DBL_MAX;
 
     for (int i = 1; i < numVertices + 1; i++) {
         newPageRank[i] = dampingFactor * newPageRank[i] + teleportWeight;
-        totalRank += newPageRank[i];
     }
 
     // Normalize the PageRank scores
     for (int i = 1; i < numVertices + 1; i++) {
-        newPageRank[i] = newPageRank[i] / totalRank;
         maxDiff = max(maxDiff, abs(newPageRank[i] - graph.labels[i]));
     }
 
@@ -192,34 +198,56 @@ double pushPageRankIteration(Graph& graph, double dampingFactor) {
     return maxDiff;
 }
 
-void writeHistogramToFile (Graph& g, const string& filename) {
-    ofstream file(filename);
-    if (!file.is_open()) {
-        cerr << "Error: Unable to open the file: " << filename << endl;
-        return;
-    }
+// void writeHistogramToFile (Graph& g, const string& filename) {
+//     ofstream file(filename);
+//     if (!file.is_open()) {
+//         cerr << "Error: Unable to open the file: " << filename << endl;
+//         return;
+//     }
 
-    int numVertices = g.offsets.size() - 2;
-    auto h = make_histogram(axis::integer<>(1, numVertices + 1, "Out edges connected to Nodes"));
+//     int numVertices = g.offsets.size() - 2;
+//     auto h = make_histogram(axis::integer<>(1, numVertices + 1, "Out edges connected to Nodes"));
 
-    for (int i = 1; i < numVertices + 1; i++) {
-        int outDegree = g.offsets[i + 1] - g.offsets[i];
-        h(outDegree);
-    }
+//     for (int i = 1; i < numVertices + 1; i++) {
+//         int outDegree = g.offsets[i + 1] - g.offsets[i];
+//         h(outDegree);
+//     }
 
-    for (auto&& x : indexed(h)) {
-        file << boost::format("out-degree of %i: %i\n") % (x.index() + 1) % *x;
-    }
+//     for (auto&& x : indexed(h)) {
+//         file << boost::format("out-degree of %i: %i\n") % (x.index() + 1) % *x;
+//     }
+// }
+
+void runWiki() {
+    Graph graph = readGraphFromDIMACS(WIKI_PATH);
+    CSRtoDIMACS(graph, "outputs/wiki/wiki_copy.dimacs");
+    printNodeNumbersAndLabels(graph, "outputs/wiki/init_labels.txt");
+    pageRank(graph, DAMPING_FACTOR, EPSILON);
+    printNodeNumbersAndLabels(graph, "outputs/wiki/final_labels.txt");
+    // writeHistogramToFile(graph, "outputs/histogram.txt");
 }
 
-
-int main() {
-    std::string filePath = "data/wiki.dimacs";
-    Graph graph = readGraphFromDIMACS(filePath);
-    CSRtoDIMACS(graph, "wiki2.dimacs");
-    printNodeNumbersAndLabels(graph, "init_wiki_labels.txt");
+void runRoadNY () {
+    Graph graph = readGraphFromDIMACS(ROAD_NY_PATH);
+    CSRtoDIMACS(graph, "outputs/road_NY/road_ny_copy.dimacs");
+    printNodeNumbersAndLabels(graph, "outputs/road_NY/init_labels.txt");
     pageRank(graph, DAMPING_FACTOR, EPSILON);
-    printNodeNumbersAndLabels(graph, "final_wiki_labels.txt");
-    writeHistogramToFile(graph, "histogram.txt");
+    printNodeNumbersAndLabels(graph, "outputs/road_NY/final_labels.txt");
+    // writeHistogramToFile(graph, "outputs/histogram.txt");
+}
+
+void runRMAT15 () {
+    Graph graph = readGraphFromDIMACS(RMAT15_PATH);
+    CSRtoDIMACS(graph, "outputs/rmat15/rmat15_copy.dimacs");
+    printNodeNumbersAndLabels(graph, "outputs/rmat15/init_labels.txt");
+    pageRank(graph, DAMPING_FACTOR, EPSILON);
+    printNodeNumbersAndLabels(graph, "outputs/rmat15/final_labels.txt");
+    // writeHistogramToFile(graph, "outputs/histogram.txt");
+}
+
+int main(int argc, char* argv[]) {
+    runWiki();
+    runRoadNY();
+    runRMAT15();
     return 0;
 }

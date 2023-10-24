@@ -214,7 +214,7 @@ void writeHistogramToFile (Graph& g, const string& filename) {
 
 
 int main() {
-    std::string filePath = "wiki.dimacs";
+    std::string filePath = "data/wiki.dimacs";
     Graph graph = readGraphFromDIMACS(filePath);
     CSRtoDIMACS(graph, "wiki2.dimacs");
     printNodeNumbersAndLabels(graph, "init_wiki_labels.txt");

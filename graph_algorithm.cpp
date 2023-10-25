@@ -20,8 +20,8 @@
 #define RMAT15_PATH "data/rmat15.dimacs"
 
 using namespace std;
-// using namespace boost::histogram;
 
+// Graph representation in CSR format
 struct Graph {
     vector<double> labels;                   // List of node labels
     vector<int> offsets;                  // List of to pointers
@@ -32,6 +32,7 @@ Graph COOtoCSR (vector<vector<int>> cooRep, int numNodes, int numEdges);
 Graph readGraphFromDIMACS(const string& filePath);
 double pushPageRankIteration(Graph& graph, double dampingFactor);
 
+// Sort function used to sort COO representation by from node
 bool sortByFrom(const vector<int>& a, const vector<int>& b) {
     return a[0] < b[0];
 }
@@ -100,6 +101,8 @@ Graph COOtoCSR (vector<vector<int>> cooRep, int numNodes, int numEdges) {
     for (int i = 1; i <= numNodes; i++) {
         graph.labels.push_back(initPageRank);
         graph.offsets.push_back(graph.dest_weights.size());
+
+        // Add all edges from node i
         for (; curIndex < numEdges; curIndex++) {
             if (cooRep[curIndex][0] != i) {
                 break;
@@ -112,6 +115,7 @@ Graph COOtoCSR (vector<vector<int>> cooRep, int numNodes, int numEdges) {
     return graph;
 }
 
+// Convert CSR representation to DIMACS representation
 void CSRtoDIMACS (Graph g, const string& filename) {
     ofstream file(filename);
     if (!file.is_open()) {
@@ -124,6 +128,7 @@ void CSRtoDIMACS (Graph g, const string& filename) {
 
     file << "p sp " << numVertices << " " << numEdges << endl;
 
+    // Print out all edges
     for (int i = 1; i < numVertices + 1; i++) {
         for (int j = g.offsets[i]; j < g.offsets[i + 1]; j++) {
             file << "a " << i << " " << g.dest_weights[j].first << " " << g.dest_weights[j].second << std::endl;
@@ -143,6 +148,7 @@ void printNodeNumbersAndLabels(const Graph& g, const string& filename) {
     int numVertices = g.offsets.size() - 2;
     double sum = 0.0;
 
+    // Print node numbers and labels to file
     for (int i = 1; i < numVertices + 1; i++) {
         sum += g.labels[i];
         file << i << " " << g.labels[i] << endl; // Node numbers start from 1
@@ -151,6 +157,7 @@ void printNodeNumbersAndLabels(const Graph& g, const string& filename) {
     file.close();
 }
 
+// Compute page ranks of nodes in the graph with given damping factor and epsilon
 void pageRank(Graph& graph, double dampingFactor, double epsilon) {
     double prevMaxDiff = DBL_MAX;
     while (prevMaxDiff > epsilon) {
@@ -160,9 +167,11 @@ void pageRank(Graph& graph, double dampingFactor, double epsilon) {
     double totalRank = 0;
     int numVertices = graph.offsets.size() - 2;
 
+    // Compute total PageRank
     for (int i = 1; i < numVertices + 1; i++) {
         totalRank += graph.labels[i];
     }
+
     // Normalize the PageRank scores
     for (int i = 1; i < numVertices + 1; i++) {
         graph.labels[i] = graph.labels[i] / totalRank;
@@ -174,10 +183,12 @@ double pushPageRankIteration(Graph& graph, double dampingFactor) {
     int numVertices = graph.offsets.size() - 2;
     vector<double> newPageRank(numVertices + 1, 0.0);
 
+    // Compute summation term of new page ranks
     for (int i = 1; i < numVertices + 1; i++) {
         int outDegree = graph.offsets[i + 1] - graph.offsets[i];
 
         if (outDegree > 0) {
+            // Compute total weight of out edges from node i
             double pushWeight = graph.labels[i];
             double totalWeight = 0.0;
             for (int j = graph.offsets[i]; j < graph.offsets[i + 1]; j++) {
@@ -186,7 +197,8 @@ double pushPageRankIteration(Graph& graph, double dampingFactor) {
             
             if (totalWeight > 0)
                 pushWeight = pushWeight / totalWeight;
-
+            
+            // Compute page rank contribution to all edges from node i
             for (int j = graph.offsets[i]; j < graph.offsets[i + 1]; j++) {
                 int dest = graph.dest_weights[j].first;
                 int weight = graph.dest_weights[j].second;
@@ -196,42 +208,17 @@ double pushPageRankIteration(Graph& graph, double dampingFactor) {
         }
     }
 
-    // Apply damping factor and update PageRank
+    // Apply damping factor, update PageRank, and compute max difference
     double teleportWeight = (1.0 - dampingFactor) / numVertices;
     double maxDiff = -DBL_MAX;
-
     for (int i = 1; i < numVertices + 1; i++) {
         newPageRank[i] = dampingFactor * newPageRank[i] + teleportWeight;
-    }
-
-    // Normalize the PageRank scores
-    for (int i = 1; i < numVertices + 1; i++) {
         maxDiff = max(maxDiff, abs(newPageRank[i] - graph.labels[i]));
     }
 
     graph.labels = newPageRank;
     return maxDiff;
 }
-
-// void writeHistogramToFile (Graph& g, const string& filename) {
-//     ofstream file(filename);
-//     if (!file.is_open()) {
-//         cerr << "Error: Unable to open the file: " << filename << endl;
-//         return;
-//     }
-
-//     int numVertices = g.offsets.size() - 2;
-//     auto h = make_histogram(axis::integer<>(1, numVertices + 1, "Out edges connected to Nodes"));
-
-//     for (int i = 1; i < numVertices + 1; i++) {
-//         int outDegree = g.offsets[i + 1] - g.offsets[i];
-//         h(outDegree);
-//     }
-
-//     for (auto&& x : indexed(h)) {
-//         file << boost::format("out-degree of %i: %i\n") % (x.index() + 1) % *x;
-//     }
-// }
 
 
 // Function to compute the histogram of outgoing edges for the graph
@@ -245,6 +232,7 @@ void computeOutgoingEdgesHistogram(const Graph& graph, const std::string& filena
     int numVertices = graph.offsets.size() - 2;
     std::vector<int> out_degrees(numVertices + 1, 0);
 
+    // Compute out degree of each node
     for (int i = 1; i < graph.offsets.size() - 1; i++) {
         int outgoingEdges = graph.offsets[i + 1] - graph.offsets[i];
         out_degrees[i] = outgoingEdges;
@@ -255,6 +243,7 @@ void computeOutgoingEdgesHistogram(const Graph& graph, const std::string& filena
 
     int numBins = max_value - min_value + 1 < 10 ? max_value - min_value + 1 : 10;
 
+    // Create histogram
     auto axis = boost::histogram::axis::regular<>(numBins, min_value, max_value + 1, "Outgoing Edges");
     auto h = boost::histogram::make_histogram(axis);
 
@@ -278,7 +267,6 @@ void computeOutgoingEdgesHistogram(const Graph& graph, const std::string& filena
 
 
 // Function to create and show a histogram of PageRank values
-// Function to create a PageRank histogram
 void createPageRankHistogram(Graph& graph, int numBins, const std::string& filename) {
     ofstream file(filename);
     if (!file.is_open()) {
@@ -286,6 +274,7 @@ void createPageRankHistogram(Graph& graph, int numBins, const std::string& filen
         return;
     }
 
+    // Create histogram
     vector<double> pageRanks = graph.labels;
     double max_value = (*max_element(pageRanks.begin(), pageRanks.end())) * 1.001;
     double min_value = (*min_element(pageRanks.begin(), pageRanks.end())) * 0.009;
@@ -303,43 +292,56 @@ void createPageRankHistogram(Graph& graph, int numBins, const std::string& filen
     }
 }
 
+// Run Wiki testcase processing and analysis
 void runWiki() {
+    // Analyze and process graph
     Graph graph = readGraphFromDIMACS(WIKI_PATH);
     CSRtoDIMACS(graph, "outputs/wiki/wiki_copy.dimacs");
     printNodeNumbersAndLabels(graph, "outputs/wiki/init_labels.txt");
 
+    // Run PageRank algorithm
     pageRank(graph, DAMPING_FACTOR, EPSILON);
     printNodeNumbersAndLabels(graph, "outputs/wiki/final_labels.txt");
 
+    // Create and print PageRank histogram
     createPageRankHistogram(graph, 10, "outputs/wiki/page_ranks_histogram.txt");
     computeOutgoingEdgesHistogram(graph, "outputs/wiki/outgoing_edges_histogram.txt");
 }
 
+// Run road_NY testcase processing and analysis
 void runRoadNY () {
+    // Analyze and process graph
     Graph graph = readGraphFromDIMACS(ROAD_NY_PATH);
     CSRtoDIMACS(graph, "outputs/road_NY/road_ny_copy.dimacs");
     printNodeNumbersAndLabels(graph, "outputs/road_NY/init_labels.txt");
 
+    // Run PageRank algorithm
     pageRank(graph, DAMPING_FACTOR, EPSILON);
     printNodeNumbersAndLabels(graph, "outputs/road_NY/final_labels.txt");
 
+    // Create and print PageRank histogram
     createPageRankHistogram(graph, 10, "outputs/road_NY/page_ranks_histogram.txt");
     computeOutgoingEdgesHistogram(graph, "outputs/road_NY/outgoing_edges_histogram.txt");
 }
 
+// Run rmat15 testcase processing and analysis
 void runRMAT15 () {
+    // Analyze and process graph
     Graph graph = readGraphFromDIMACS(RMAT15_PATH);
     CSRtoDIMACS(graph, "outputs/rmat15/rmat15_copy.dimacs");
     printNodeNumbersAndLabels(graph, "outputs/rmat15/init_labels.txt");
 
+    // Run PageRank algorithm
     pageRank(graph, DAMPING_FACTOR, EPSILON);
     printNodeNumbersAndLabels(graph, "outputs/rmat15/final_labels.txt");
 
+    // Create and print PageRank histogram
     createPageRankHistogram(graph, 10, "outputs/rmat15/page_ranks_histogram.txt");
     computeOutgoingEdgesHistogram(graph, "outputs/rmat15/outgoing_edges_histogram.txt");
 }
 
 int main(int argc, char* argv[]) {
+    // Run analysis for each testcase
     runWiki();
     runRoadNY();
     runRMAT15();

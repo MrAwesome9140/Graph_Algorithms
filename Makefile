@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++11
+CXXFLAGS = -std=c++14
 
 SRCS = graph_algorithm.cpp
 OUT = graph_algorithm

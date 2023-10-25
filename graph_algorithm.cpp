@@ -1,3 +1,10 @@
+/*
+* Code by Aaroh Sharma and Kamil Yildirim
+* 
+* EIDs: as225925, ky5637
+*/
+
+
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -171,12 +178,20 @@ double pushPageRankIteration(Graph& graph, double dampingFactor) {
         int outDegree = graph.offsets[i + 1] - graph.offsets[i];
 
         if (outDegree > 0) {
-            double pushWeight = graph.labels[i] / outDegree;
+            double pushWeight = graph.labels[i];
+            double totalWeight = 0.0;
+            for (int j = graph.offsets[i]; j < graph.offsets[i + 1]; j++) {
+                totalWeight += graph.dest_weights[j].second;
+            }
+            
+            if (totalWeight > 0)
+                pushWeight = pushWeight / totalWeight;
 
             for (int j = graph.offsets[i]; j < graph.offsets[i + 1]; j++) {
                 int dest = graph.dest_weights[j].first;
                 int weight = graph.dest_weights[j].second;
-                newPageRank[dest] += pushWeight;
+                if (weight > 0)
+                    newPageRank[dest] += pushWeight * weight;
             }
         }
     }

@@ -1,0 +1,9 @@
+Bin 0 [0]: Count = 0
+Bin 1 [1]: Count = 41169
+Bin 2 [2]: Count = 40354
+Bin 3 [3]: Count = 124535
+Bin 4 [4]: Count = 56998
+Bin 5 [5]: Count = 1124
+Bin 6 [6]: Count = 157
+Bin 7 [7]: Count = 8
+Bin 8 [8]: Count = 1

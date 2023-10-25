@@ -1,0 +1,4 @@
+Bin 0 [0]: Count = 1
+Bin 1 [1]: Count = 4
+Bin 2 [2]: Count = 5
+Bin 3 [3]: Count = 1

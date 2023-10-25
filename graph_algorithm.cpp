@@ -3,8 +3,8 @@
 #include <vector>
 #include <float.h>
 #include <algorithm>
-// #include <boost/format.hpp>
-// #include <boost/histogram.hpp>
+#include <boost/format.hpp>
+#include <boost/histogram.hpp>
 
 #define DAMPING_FACTOR 0.85
 #define EPSILON 0.0001
@@ -218,31 +218,110 @@ double pushPageRankIteration(Graph& graph, double dampingFactor) {
 //     }
 // }
 
+
+// Function to compute the histogram of outgoing edges for the graph
+void computeOutgoingEdgesHistogram(const Graph& graph, const std::string& filename) {
+    ofstream file(filename);
+    if (!file.is_open()) {
+        cerr << "Error: Unable to open the file: " << filename << endl;
+        return;
+    }
+
+    int numVertices = graph.offsets.size() - 2;
+    std::vector<int> out_degrees(numVertices + 1, 0);
+
+    for (int i = 1; i < graph.offsets.size() - 1; i++) {
+        int outgoingEdges = graph.offsets[i + 1] - graph.offsets[i];
+        out_degrees[i] = outgoingEdges;
+    }
+
+    int max_value = *max_element(out_degrees.begin(), out_degrees.end());
+    int min_value = *min_element(out_degrees.begin(), out_degrees.end());
+
+    int numBins = max_value - min_value + 1 < 10 ? max_value - min_value + 1 : 10;
+
+    auto axis = boost::histogram::axis::regular<>(numBins, min_value, max_value + 1, "Outgoing Edges");
+    auto h = boost::histogram::make_histogram(axis);
+
+    // Fill the histogram with PageRank values
+    for (int i = 1; i < out_degrees.size(); i++) {
+        h(out_degrees[i]);
+    }
+
+    if (numBins == 10) {
+        for (auto&& x : indexed(h)) {
+            file << boost::format("Bin %i [%i, %i]: Count = %i\n") % x.index() 
+                % (int) x.bin().lower() % (int) x.bin().upper() % *x;
+        }
+    } else {
+        for (auto&& x : indexed(h)) {
+            file << boost::format("Bin %i [%i]: Count = %i\n") % x.index() 
+                % x.bin().lower() % *x;
+        }
+    }
+}
+
+
+// Function to create and show a histogram of PageRank values
+// Function to create a PageRank histogram
+void createPageRankHistogram(Graph& graph, int numBins, const std::string& filename) {
+    ofstream file(filename);
+    if (!file.is_open()) {
+        cerr << "Error: Unable to open the file: " << filename << endl;
+        return;
+    }
+
+    vector<double> pageRanks = graph.labels;
+    double max_value = (*max_element(pageRanks.begin(), pageRanks.end())) * 1.001;
+    double min_value = (*min_element(pageRanks.begin(), pageRanks.end())) * 0.009;
+    auto axis = boost::histogram::axis::regular<>(numBins, min_value, max_value, "Page Ranks");
+    auto h = boost::histogram::make_histogram(axis);
+
+    // Fill the histogram with PageRank values
+    for (int i = 1; i < pageRanks.size(); i++) {
+        h(pageRanks[i]);
+    }
+
+    for (auto&& x : indexed(h)) {
+        file << boost::format("Bin %i [%i, %i]: Count = %i\n") % x.index() 
+            % x.bin().lower() % x.bin().upper() % *x;
+    }
+}
+
 void runWiki() {
     Graph graph = readGraphFromDIMACS(WIKI_PATH);
     CSRtoDIMACS(graph, "outputs/wiki/wiki_copy.dimacs");
     printNodeNumbersAndLabels(graph, "outputs/wiki/init_labels.txt");
+
     pageRank(graph, DAMPING_FACTOR, EPSILON);
     printNodeNumbersAndLabels(graph, "outputs/wiki/final_labels.txt");
-    // writeHistogramToFile(graph, "outputs/histogram.txt");
+
+    createPageRankHistogram(graph, 10, "outputs/wiki/page_ranks_histogram.txt");
+    computeOutgoingEdgesHistogram(graph, "outputs/wiki/outgoing_edges_histogram.txt");
 }
 
 void runRoadNY () {
     Graph graph = readGraphFromDIMACS(ROAD_NY_PATH);
     CSRtoDIMACS(graph, "outputs/road_NY/road_ny_copy.dimacs");
     printNodeNumbersAndLabels(graph, "outputs/road_NY/init_labels.txt");
+
     pageRank(graph, DAMPING_FACTOR, EPSILON);
     printNodeNumbersAndLabels(graph, "outputs/road_NY/final_labels.txt");
-    // writeHistogramToFile(graph, "outputs/histogram.txt");
+
+    createPageRankHistogram(graph, 10, "outputs/road_NY/page_ranks_histogram.txt");
+    computeOutgoingEdgesHistogram(graph, "outputs/road_NY/outgoing_edges_histogram.txt");
 }
 
 void runRMAT15 () {
     Graph graph = readGraphFromDIMACS(RMAT15_PATH);
     CSRtoDIMACS(graph, "outputs/rmat15/rmat15_copy.dimacs");
     printNodeNumbersAndLabels(graph, "outputs/rmat15/init_labels.txt");
+
     pageRank(graph, DAMPING_FACTOR, EPSILON);
     printNodeNumbersAndLabels(graph, "outputs/rmat15/final_labels.txt");
-    // writeHistogramToFile(graph, "outputs/histogram.txt");
+
+    createPageRankHistogram(graph, 10, "outputs/rmat15/page_ranks_histogram.txt");
+    computeOutgoingEdgesHistogram(graph, "outputs/rmat15/outgoing_edges_histogram.txt");
 }
 
 int main(int argc, char* argv[]) {
